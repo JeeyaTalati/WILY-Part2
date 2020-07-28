@@ -2,6 +2,9 @@ import React from 'react';
 import {Text,View, StyleSheet, TouchableOpacity, TextInput, Image} from 'react-native';
 import {BarCodeScanner} from 'expo-barcode-scanner';
 import Permissions from 'expo-permissions';
+import firebase from 'firebase';
+import db from '../config';
+
 export default class TransactionScreen extends React.Component{
     constructor(){
         super();
@@ -12,6 +15,8 @@ export default class TransactionScreen extends React.Component{
             buttonState:"normal",
             scannedBookId:"",
               scannedStudentId:"",
+              transactionMessage:'',
+
          }
     }
     getPermissionsAsync = async (Id) => {
@@ -25,17 +30,68 @@ export default class TransactionScreen extends React.Component{
           
           this.setState({
               scanned:true,
-              scannedData:data,
+              scannedBookId:data,
               buttonState:"normal",
               
           })}
           else if (buttonState==="StudentId"){
             this.setState({
                 scanned:true,
-                scannedData:data,
+                scannedStudentId:data,
                 buttonState:"normal",  
 
           })}
+      }
+        intiateBookIssue=async ()=>{
+            db.collection("transactions").add({
+                'studentId':this.state.scannedStudentId,
+                'bookId':this.state.scannedBookId,
+                'date':firebase.firestore.Timestamp.now().toDate(),
+                'transactionType':Issued,
+            })
+            db.collection("books").doc(this.state.scannedBookId).update({
+                "bookAvailability":false,
+            });
+            db.collection("students").doc(this.state.scannedStudentId).update({
+                "numberOfBooksIssued":firebase.firestore.FieldValue.increment(1),
+            });
+            this.setState({
+                scannedStudentId:"",
+                scannedBookId:"",
+            });
+        }
+        intiateBookReturn=async ()=>{
+            db.collection("transactions").add({
+                'studentId':this.state.scannedStudentId,
+                'bookId':this.state.scannedBookId,
+                'date':firebase.firestore.Timestamp.now().toDate(),
+                'transactionType':Issued,
+            })
+            db.collection("books").doc(this.state.scannedBookId).update({
+                "bookAvailability":true,
+            });
+            db.collection("students").doc(this.state.scannedStudentId).update({
+                "numberOfBooksIssued":firebase.firestore.FieldValue.increment(-1),
+            });
+            this.setState({
+                scannedStudentId:"",
+                scannedBookId:"",
+            });
+        }
+      handleTransaction= async ()=>{
+          var transactionMessage=nul;
+          db.collection("books").doc(this.state.scannedBookId).get().then((doc)=>{
+              var book = doc.data();
+              if (book.bookAvailability){
+                  this.intiateBookIssue();
+                  transactionMessage="Book Issued"
+              }
+              else {
+                  this.intiateBookReturn();
+                  transactionMessage= " Book Returned "
+              }
+          });
+          this.setState({transactionMessage:transactionMessage})
       }
     
     render (){
@@ -74,6 +130,11 @@ export default class TransactionScreen extends React.Component{
                          </Text>
                      </TouchableOpacity>
                     </View>
+                    <TouchableOpacity style={styles.submitButton} onPress={async()=>{var transactionMessage=await this.handleTransaction()}}>
+                        <Text style={styles.submitButtonText}>
+                            SUBMIT
+                        </Text>
+                    </TouchableOpacity>
                 
                 </View>
             )
@@ -92,11 +153,7 @@ const styles=StyleSheet.create({
       
 
   },
-  scanButton:{
-      backgroundColor:"red",
-      padding:10,
-      margin:10,
-  },
+  
   buttonText:{
       fontSize:20,
      textAlign:'center',
@@ -118,6 +175,18 @@ ScanButton:{
     width:50,
     borderWidth:1.5,
     borderLeftWidth:0,
+},
+submitButton:{
+    backgroundColor:"#fbc02d",
+    width:100,
+    height:50,
+},
+submitButtonText:{
+  padding:10,
+  textAlign:'center',
+  fontSize:20,
+  fontWeight:'bold',
+  color:"white",  
 }
 
 })
