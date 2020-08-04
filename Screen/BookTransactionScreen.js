@@ -1,5 +1,5 @@
 import React from 'react';
-import {Text,View, StyleSheet, TouchableOpacity, TextInput, Image} from 'react-native';
+import {Text,View, StyleSheet, TouchableOpacity, TextInput, Image, KeyboardAvoidingView, Alert} from 'react-native';
 import {BarCodeScanner} from 'expo-barcode-scanner';
 import Permissions from 'expo-permissions';
 import firebase from 'firebase';
@@ -11,12 +11,11 @@ export default class TransactionScreen extends React.Component{
         this.state={
             hasCameraPermission:null,
             scanned:false,
-            scannedData:"",
             buttonState:"normal",
             scannedBookId:"",
               scannedStudentId:"",
               transactionMessage:'',
-
+               
          }
     }
     getPermissionsAsync = async (Id) => {
@@ -43,11 +42,12 @@ export default class TransactionScreen extends React.Component{
           })}
       }
         intiateBookIssue=async ()=>{
+            console.log("startedIssuing")
             db.collection("transactions").add({
                 'studentId':this.state.scannedStudentId,
                 'bookId':this.state.scannedBookId,
                 'date':firebase.firestore.Timestamp.now().toDate(),
-                'transactionType':Issued,
+                'transactionType':"Issued",
             })
             db.collection("books").doc(this.state.scannedBookId).update({
                 "bookAvailability":false,
@@ -65,7 +65,7 @@ export default class TransactionScreen extends React.Component{
                 'studentId':this.state.scannedStudentId,
                 'bookId':this.state.scannedBookId,
                 'date':firebase.firestore.Timestamp.now().toDate(),
-                'transactionType':Issued,
+                'transactionType':"Returned",
             })
             db.collection("books").doc(this.state.scannedBookId).update({
                 "bookAvailability":true,
@@ -78,20 +78,45 @@ export default class TransactionScreen extends React.Component{
                 scannedBookId:"",
             });
         }
+        checkBookEligiblity=async()=>{
+         const bookRef=await db.collection("books").where("bookId","==",this.state.scannedBookId).get();
+         var transactionType="";
+         if(bookRef.docs.length===0){
+             transactionType= false;
+         }
+         else {
+             bookRef.docs.map((doc)=>{
+                 var book = doc.data();
+                 if(book.bookAvailability){
+                     transactionType="Issue";
+                 }
+                 else {
+                     transactionType="Return";
+                 }
+             })
+         }
+        }
       handleTransaction= async ()=>{
-          var transactionMessage=nul;
-          db.collection("books").doc(this.state.scannedBookId).get().then((doc)=>{
-              var book = doc.data();
-              if (book.bookAvailability){
-                  this.intiateBookIssue();
-                  transactionMessage="Book Issued"
-              }
-              else {
+          var transactionType=await this.checkBookEligiblity();
+          if (!transactionType){
+            Alert.alert("The book doesn't exist in database.");
+            this.setState({scannedBookId:"", scannedStudentId:""})
+          }
+          else if (transactionType==="Issue"){
+                 var isStudentElligible=await this.checkStudentEligiblityForBookIssue();
+                 if (isStudentElligible){
+                     this.intiateBookIssue();
+                     Alert.alert("Book issued to the student");
+                 }
+          }
+          else if (transactionType==="Return"){
+              var isStudentElligible= await this.checkStudentEligiblityForBookReturn();
+              if(isStudentElligible){
                   this.intiateBookReturn();
-                  transactionMessage= " Book Returned "
+                  Alert.alert("Book returned to the library");
               }
-          });
-          this.setState({transactionMessage:transactionMessage})
+          }
+          
       }
     
     render (){
@@ -99,7 +124,7 @@ export default class TransactionScreen extends React.Component{
         const scanned=this.state.scanned;
         const buttonState=this.state.buttonState;
         if(buttonState!=="normal" && hasCameraPermission){
-        return(<BarCodeScanner onBarcodeScanned={scanned ? undefined:this.handleBarCodeScan} style={StyleSheet.absoluteFillObject}></BarCodeScanner>);
+        return(<BarCodeScanner onBarCodeScanned={scanned ? undefined:this.handleBarCodeScan} style={StyleSheet.absoluteFillObject}></BarCodeScanner>);
         }
         else if(buttonState==="normal"){
             return(
@@ -111,7 +136,7 @@ export default class TransactionScreen extends React.Component{
                     </Text>
                     </View>
                     <View style={styles.inputView}>
-                     <TextInput style={styles.inputBox} placeholder="BookId" value={this.state.scannedBookId}>
+                     <TextInput style={styles.inputBox} placeholder="BookId" value={this.state.scannedBookId} onChangeText={(text)=>{this.setState({scannedBookId:text})}}>
                        
                      </TextInput>
                      <TouchableOpacity style={styles.scanButton} onPress={()=>{this.getPermissionsAsync("BookId")}}>
@@ -121,7 +146,7 @@ export default class TransactionScreen extends React.Component{
                      </TouchableOpacity>
                     </View>
                     <View style={styles.inputView}>
-                     <TextInput style={styles.inputBox} placeholder="StudentId" value={this.state.scannedStudentId}>
+                     <TextInput style={styles.inputBox} placeholder="StudentId" value={this.state.scannedStudentId} onChangeText={(text)=>{this.setState({scannedStudentId:text})}}>
                        
                      </TextInput>
                      <TouchableOpacity style={styles.scanButton} onPress={()=>{this.getPermissionsAsync("StudentId")}}>
@@ -153,7 +178,10 @@ const styles=StyleSheet.create({
       
 
   },
-  
+  scanButton:{
+   margin:10,
+   padding:10,
+  },
   buttonText:{
       fontSize:20,
      textAlign:'center',
@@ -170,7 +198,7 @@ inputBox:{
     borderRightWidth:0,
     fontSize:20,
 },
-ScanButton:{
+scanButton:{
     backgroundColor:"#66bb6a",
     width:50,
     borderWidth:1.5,
