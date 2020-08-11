@@ -95,6 +95,46 @@ export default class TransactionScreen extends React.Component{
                  }
              })
          }
+         return transactionType
+        }
+        checkStudentEligiblityForBookIssue=async()=>{
+            const studentRef=await db.collection ("students").where("studentId","==",this.state.scannedStudentId).get()
+            var isStudentElligible="";
+            if(studentRef.docs.length===0){
+                this.setState({scannedStudentId:"", scannedBookId:""});
+                isStudentElligible=false;
+                Alert.alert("The student not found.");
+            }
+            else {
+            studentRef.docs.map((doc)=>{
+                var student = doc.data();
+                if (student.numberOfBooksIssued<2){
+                    isStudentElligible=true;
+                }
+                else{
+                    isStudentElligible=false;
+                    this.setState({scannedStudentId:"", scannedBookId:""});
+                    Alert.alert("The student has aldready issued two books.");
+                }
+            })
+            }
+            return isStudentElligible
+        }
+        checkStudentEligiblityForBookReturn=async()=>{
+            const transactionRef=await db.collection("transactions").where("bookId","==",this.state.scannedBookId).limit(1).get();
+            var isStudentElligible="";
+            transactionRef.docs.map((doc)=>{
+               var lastBookTransaction=doc.data();
+               if(lastBookTransaction.studenttId===this.state.scannedStudentId){
+                   isStudentElligible=true;
+               }
+               else{
+                   isStudentElligible=false;
+                   Alert.alert("This book was not issued by you.");
+                   this.setState({scannedStudentId:"",scannedBookId:""});
+               }
+            })
+            return isStudentElligible
         }
       handleTransaction= async ()=>{
           var transactionType=await this.checkBookEligiblity();
